@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import { env } from "@/config/env";
 import { logger } from "@/config/logger";
-import { whatsappEngine } from "./cloudapi.engine";
+// Cloud API engine is only used here, to process Meta webhook payloads when configured.
+import { whatsappEngine as cloudApiEngine } from "./cloudapi.engine";
 
 /**
  * GET /api/v1/whatsapp/webhook
@@ -10,6 +11,11 @@ import { whatsappEngine } from "./cloudapi.engine";
  * We verify the token and echo back the challenge.
  */
 export async function verifyWebhook(req: Request, res: Response) {
+  // Cloud API is optional; without a configured verify token the webhook is disabled.
+  if (!env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.status(404).json({ error: "WhatsApp Cloud API webhook is not enabled" });
+  }
+
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
@@ -35,6 +41,11 @@ export async function verifyWebhook(req: Request, res: Response) {
  * Always respond 200 quickly, then process asynchronously if needed.
  */
 export async function handleWebhook(req: Request, res: Response) {
+  // Cloud API is optional; acknowledge and ignore events when it is not configured.
+  if (!env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.status(200).json({ success: true, ignored: true });
+  }
+
   try {
     const payload = req.body;
 
@@ -45,7 +56,7 @@ export async function handleWebhook(req: Request, res: Response) {
 
     // Process asynchronously in background
     if (payload.object === "whatsapp_business_account") {
-      whatsappEngine.handleWebhookEvent(payload).catch((err) => {
+      cloudApiEngine.handleWebhookEvent(payload).catch((err) => {
         logger.error({ err, payload }, "Error handling webhook event");
       });
     } else {

@@ -23,11 +23,11 @@ router.use(requireAuth);
  * /whatsapp/connect:
  *   post:
  *     tags: [WhatsApp Session]
- *     summary: Initialize Cloud API connection (always connected via credentials)
+ *     summary: Start a WhatsApp (Baileys) session and begin QR pairing
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200:
- *         description: Cloud API status retrieved
+ *         description: Session status retrieved
  */
 router.post("/connect", whatsappActionLimiter, asyncHandler(whatsappController.connect));
 
@@ -36,7 +36,7 @@ router.post("/connect", whatsappActionLimiter, asyncHandler(whatsappController.c
  * /whatsapp/status:
  *   get:
  *     tags: [WhatsApp Session]
- *     summary: Get the current WhatsApp Cloud API connection status
+ *     summary: Get the current WhatsApp connection status
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200: { description: Current connection status }
@@ -48,7 +48,7 @@ router.get("/status", asyncHandler(whatsappController.status));
  * /whatsapp/logout:
  *   post:
  *     tags: [WhatsApp Session]
- *     summary: Logout Cloud API (no-op, credentials managed globally)
+ *     summary: Logout the WhatsApp session and wipe stored credentials
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200: { description: Logged out }

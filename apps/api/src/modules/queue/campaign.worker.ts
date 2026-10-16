@@ -5,7 +5,7 @@ import { redisConnection } from "@/config/redis";
 import { prisma } from "@/config/prisma";
 import { env } from "@/config/env";
 import { logger } from "@/config/logger";
-import { whatsappEngine } from "@/modules/whatsapp/cloudapi.engine";
+import { whatsappEngine } from "@/modules/whatsapp/baileys.engine";
 import { emitCampaignProgress, emitNotification } from "@/sockets";
 import { CAMPAIGN_QUEUE_NAME, CampaignJobData, enqueueMessage } from "./campaign.queue";
 
@@ -41,9 +41,6 @@ async function processJob(job: Job<CampaignJobData>, io: SocketIOServer) {
     mediaPath,
     mediaType,
     attempt,
-    templateName,
-    templateLanguage,
-    templateParams,
   } = job.data;
 
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
@@ -65,16 +62,10 @@ async function processJob(job: Job<CampaignJobData>, io: SocketIOServer) {
     data: { status: MessageStatus.SENDING, attempts: attempt },
   });
 
-  // Use template mode if provided (for new contacts), otherwise free text (for replies)
   const result = await whatsappEngine.sendMessage({
     userId,
     to: phoneNumber,
-    ...(templateName && {
-      templateName,
-      templateLanguage: templateLanguage || "id",
-      templateParams,
-    }),
-    ...(!templateName && { text: content }),
+    text: content,
     mediaPath,
     mediaType,
   });

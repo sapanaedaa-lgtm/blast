@@ -2,7 +2,7 @@ import { CampaignStatus, MessageStatus } from "@prisma/client";
 import { prisma } from "@/config/prisma";
 import { AppError } from "@/utils/AppError";
 import { renderTemplate } from "@/modules/template/template.service";
-import { whatsappEngine } from "@/modules/whatsapp/cloudapi.engine";
+import { whatsappEngine } from "@/modules/whatsapp/baileys.engine";
 import { enqueueMessage, drainCampaignJobs } from "@/modules/queue/campaign.queue";
 import { buildDelaySchedule, DELAY_PRESET_RANGES } from "@/modules/queue/scheduler";
 import { CreateCampaignInput } from "./campaign.schema";
@@ -105,7 +105,7 @@ export async function getCampaign(userId: string, id: string) {
 async function assertWhatsAppConnected(userId: string) {
   if (!whatsappEngine.isConnected(userId)) {
     throw AppError.badRequest(
-      "WhatsApp Cloud API tidak tersambung. Pastikan WHATSAPP_CLOUD_API_TOKEN dan kredensial lainnya sudah dikonfigurasi."
+      "WhatsApp belum tersambung. Silakan pindai QR Code di halaman koneksi WhatsApp terlebih dahulu."
     );
   }
 }
@@ -141,12 +141,7 @@ export async function startCampaign(userId: string, id: string) {
   const mediaType =
     campaign.mediaFile && campaign.mediaFile.type !== "NONE" ? campaign.mediaFile.type : undefined;
 
-  // Template mode: use WhatsApp template for new contacts (cold outreach)
-  // For now, default template is "bags_kece" (custom Indonesian marketing template)
-  const templateName = "bags_kece";
-  const templateLanguage = "id";
-  const templateParams: Record<string, string> = {};
-
+  // Baileys sends the rendered message content as free text; no Cloud API templates.
   await Promise.all(
     pendingMessages.map((message, idx) =>
       enqueueMessage(
@@ -159,10 +154,6 @@ export async function startCampaign(userId: string, id: string) {
           mediaPath: mediaPath as string | undefined,
           mediaType: mediaType as "IMAGE" | "VIDEO" | "DOCUMENT" | undefined,
           attempt: message.attempts + 1,
-          // Cloud API template mode
-          templateName,
-          templateLanguage,
-          templateParams,
         },
         schedule[idx]
       )
