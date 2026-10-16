@@ -22,6 +22,12 @@ async function bootstrap() {
   await prisma.$connect();
   logger.info("✅ Database connected");
 
+  try {
+    await whatsappEngine.resetStaleSessions();
+  } catch (err) {
+    logger.error({ err }, "Failed to reset stale WhatsApp sessions");
+  }
+
   httpServer.listen(env.PORT, () => {
     logger.info(`🚀 iNaedaa Blast API running on port ${env.PORT} [${env.NODE_ENV}]`);
     logger.info(`📚 Swagger docs available at http://localhost:${env.PORT}/api/docs`);

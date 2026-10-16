@@ -26,6 +26,7 @@ export default function WhatsAppConnectPage() {
   const sharedSocket = useSocket();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [stalled, setStalled] = useState(false);
 
   useEffect(() => {
     apiClient
@@ -74,6 +75,13 @@ export default function WhatsAppConnectPage() {
   const showQr = status === "QR_PENDING" && !!qr;
   const showPreparing =
     status === "CONNECTING" || status === "RECONNECTING" || (status === "QR_PENDING" && !qr);
+
+  useEffect(() => {
+    setStalled(false);
+    if (!showPreparing) return;
+    const timer = setTimeout(() => setStalled(true), 30000);
+    return () => clearTimeout(timer);
+  }, [status, showPreparing]);
 
   let viewKey = "idle";
   if (loading) viewKey = "loading";
@@ -158,6 +166,14 @@ export default function WhatsAppConnectPage() {
               >
                 <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
                 <p className="text-sm text-slate-500">Menyiapkan QR Code...</p>
+                {stalled && (
+                  <p className="text-xs text-slate-500">
+                    Belum ada QR Code. Klik Coba lagi untuk memulai ulang.
+                  </p>
+                )}
+                <Button variant="secondary" onClick={handleConnect} loading={submitting}>
+                  Coba lagi
+                </Button>
               </motion.div>
             )}
 
