@@ -66,7 +66,7 @@ async function main() {
   }
 
   console.log("✅ Seed complete.");
-  console.log(`   Admin login: ${email} / ${password}`);
+  console.log(`   Admin email: ${email}`);
 }
 
 main()
