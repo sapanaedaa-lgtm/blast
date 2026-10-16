@@ -28,9 +28,11 @@ interface ActiveSession {
 }
 
 const RECONNECT_DELAY_MS = 4000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 class BaileysWhatsAppEngine implements IWhatsAppEngine {
   private sessions = new Map<string, ActiveSession>();
+  private reconnectAttempts = new Map<string, number>();
   private io?: SocketIOServer;
 
   attachSocketServer(io: SocketIOServer) {
@@ -50,7 +52,8 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     return path.resolve(env.WA_SESSION_DIR, userId);
   }
 
-  async startSession(userId: string): Promise<void> {
+  async startSession(userId: string, opts?: { manual?: boolean }): Promise<void> {
+    if (opts?.manual) this.reconnectAttempts.delete(userId);
     const existing = this.sessions.get(userId);
     if (existing && (existing.status === "CONNECTED" || existing.status === "CONNECTING")) {
       return; // already connecting/connected — no-op
@@ -82,6 +85,7 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     const session = this.sessions.get(userId);
 
     if (qr) {
+      logger.info({ userId, qrLength: qr.length }, "Baileys QR generated");
       const qrDataUrl = await qrcode.toDataURL(qr, { margin: 1, width: 320 });
       if (session) session.status = "QR_PENDING";
       await this.persistStatus(userId, "QR_PENDING", { lastQrAt: new Date() });
@@ -89,6 +93,8 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     }
 
     if (connection === "open") {
+      logger.info({ userId }, "Baileys connection open");
+      this.reconnectAttempts.set(userId, 0);
       const me = session?.socket.user;
       const phoneNumber = me?.id?.split(":")[0]?.split("@")[0];
       if (session) session.status = "CONNECTED";
@@ -108,28 +114,59 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       const reason = lastDisconnect?.error?.message ?? "unknown";
 
+      const attempt = loggedOut
+        ? (this.reconnectAttempts.get(userId) ?? 0)
+        : (this.reconnectAttempts.get(userId) ?? 0) + 1;
+
+      logger.warn(
+        { userId, statusCode, reason, loggedOut, attempt },
+        "Baileys connection closed"
+      );
+
       this.sessions.delete(userId);
 
-      await this.persistStatus(userId, loggedOut ? "LOGGED_OUT" : "DISCONNECTED", {
-        disconnectReason: reason,
-      });
-      this.broadcastStatus(userId, { status: loggedOut ? "LOGGED_OUT" : "DISCONNECTED" });
-
       if (loggedOut) {
+        this.reconnectAttempts.delete(userId);
+        await this.persistStatus(userId, "LOGGED_OUT", { disconnectReason: reason });
+        this.broadcastStatus(userId, { status: "LOGGED_OUT" });
         await wipeAuthState(this.sessionFolder(userId));
         this.notify(userId, "error", "WhatsApp Logout", "Perangkat logout. Silakan pindai ulang QR Code.");
-      } else {
+        return;
+      }
+
+      this.reconnectAttempts.set(userId, attempt);
+
+      if (attempt <= MAX_RECONNECT_ATTEMPTS) {
+        await this.persistStatus(userId, "DISCONNECTED", { disconnectReason: reason });
+        this.broadcastStatus(userId, { status: "DISCONNECTED" });
         this.notify(userId, "warning", "WhatsApp Terputus", "Koneksi terputus, mencoba menyambung ulang...");
         setTimeout(() => {
           this.startSession(userId).catch((err) =>
             logger.error({ err, userId }, "Auto-reconnect failed")
           );
         }, RECONNECT_DELAY_MS);
+      } else {
+        logger.error(
+          { userId, attempts: attempt, statusCode, reason },
+          "Baileys reconnect limit reached, stopping"
+        );
+        await this.persistStatus(userId, "DISCONNECTED", {
+          disconnectReason: "reconnect_limit_reached",
+        });
+        this.broadcastStatus(userId, { status: "DISCONNECTED" });
+        this.notify(
+          userId,
+          "error",
+          "WhatsApp Gagal Terhubung",
+          "Gagal menyambung setelah beberapa kali percobaan. Klik Hubungkan WhatsApp untuk mencoba lagi."
+        );
+        this.reconnectAttempts.delete(userId);
       }
     }
   }
 
   async logoutSession(userId: string): Promise<void> {
+    this.reconnectAttempts.delete(userId);
     const session = this.sessions.get(userId);
     if (session) {
       try {
