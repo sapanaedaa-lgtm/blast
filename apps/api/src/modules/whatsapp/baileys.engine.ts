@@ -25,8 +25,10 @@ import {
 interface ActiveSession {
   socket: WASocket;
   status: WhatsAppStatusPayload["status"];
+  startedAt: number;
 }
 
+const STALE_SESSION_MS = 120000;
 const RECONNECT_DELAY_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
@@ -37,6 +39,18 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
 
   attachSocketServer(io: SocketIOServer) {
     this.io = io;
+  }
+
+  /**
+   * At process start the in-memory `sessions` map is empty, so any persisted
+   * status other than DISCONNECTED/LOGGED_OUT is stale and must be reset.
+   */
+  async resetStaleSessions(): Promise<void> {
+    const result = await prisma.whatsAppSession.updateMany({
+      where: { status: { in: ["CONNECTING", "QR_PENDING", "RECONNECTING", "CONNECTED"] } },
+      data: { status: "DISCONNECTED", disconnectReason: "server_restart" },
+    });
+    logger.info({ count: result.count }, "Reset stale WhatsApp sessions");
   }
 
   isConnected(userId: string): boolean {
@@ -54,8 +68,23 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
 
   async startSession(userId: string, isAutoReconnect = false): Promise<void> {
     const existing = this.sessions.get(userId);
-    if (existing && (existing.status === "CONNECTED" || existing.status === "CONNECTING")) {
-      return; // already connecting/connected — no-op
+    if (existing) {
+      if (existing.status === "CONNECTED") {
+        return; // already connected — no-op
+      }
+      const isPending = existing.status === "CONNECTING" || existing.status === "QR_PENDING";
+      if (isPending && Date.now() - existing.startedAt < STALE_SESSION_MS) {
+        return; // recently started — no-op
+      }
+      if (isPending) {
+        logger.warn({ userId }, "Restarting stale WhatsApp session");
+        try {
+          existing.socket.end(undefined);
+        } catch (err) {
+          logger.warn({ err, userId }, "Error closing stale WhatsApp socket");
+        }
+        this.sessions.delete(userId);
+      }
     }
 
     if (!isAutoReconnect) {
@@ -72,7 +101,7 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       markOnlineOnConnect: false,
     });
 
-    this.sessions.set(userId, { socket, status: "CONNECTING" });
+    this.sessions.set(userId, { socket, status: "CONNECTING", startedAt: Date.now() });
     await this.persistStatus(userId, "CONNECTING");
 
     socket.ev.on("creds.update", saveCreds);
