@@ -28,9 +28,11 @@ interface ActiveSession {
 }
 
 const RECONNECT_DELAY_MS = 4000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 class BaileysWhatsAppEngine implements IWhatsAppEngine {
   private sessions = new Map<string, ActiveSession>();
+  private reconnectAttempts = new Map<string, number>();
   private io?: SocketIOServer;
 
   attachSocketServer(io: SocketIOServer) {
@@ -50,10 +52,14 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     return path.resolve(env.WA_SESSION_DIR, userId);
   }
 
-  async startSession(userId: string): Promise<void> {
+  async startSession(userId: string, isAutoReconnect = false): Promise<void> {
     const existing = this.sessions.get(userId);
     if (existing && (existing.status === "CONNECTED" || existing.status === "CONNECTING")) {
       return; // already connecting/connected — no-op
+    }
+
+    if (!isAutoReconnect) {
+      this.reconnectAttempts.set(userId, 0);
     }
 
     const folder = this.sessionFolder(userId);
@@ -82,6 +88,7 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     const session = this.sessions.get(userId);
 
     if (qr) {
+      logger.info({ userId, qrReceived: true }, "Baileys QR generated");
       const qrDataUrl = await qrcode.toDataURL(qr, { margin: 1, width: 320 });
       if (session) session.status = "QR_PENDING";
       await this.persistStatus(userId, "QR_PENDING", { lastQrAt: new Date() });
@@ -89,6 +96,8 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     }
 
     if (connection === "open") {
+      logger.info({ userId }, "Baileys connection open");
+      this.reconnectAttempts.set(userId, 0);
       const me = session?.socket.user;
       const phoneNumber = me?.id?.split(":")[0]?.split("@")[0];
       if (session) session.status = "CONNECTED";
@@ -108,6 +117,8 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       const reason = lastDisconnect?.error?.message ?? "unknown";
 
+      logger.warn({ userId, statusCode, reason, loggedOut }, "Baileys connection closed");
+
       this.sessions.delete(userId);
 
       await this.persistStatus(userId, loggedOut ? "LOGGED_OUT" : "DISCONNECTED", {
@@ -116,12 +127,32 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       this.broadcastStatus(userId, { status: loggedOut ? "LOGGED_OUT" : "DISCONNECTED" });
 
       if (loggedOut) {
+        this.reconnectAttempts.delete(userId);
         await wipeAuthState(this.sessionFolder(userId));
         this.notify(userId, "error", "WhatsApp Logout", "Perangkat logout. Silakan pindai ulang QR Code.");
       } else {
+        const attempts = (this.reconnectAttempts.get(userId) ?? 0) + 1;
+        this.reconnectAttempts.set(userId, attempts);
+
+        if (attempts > MAX_RECONNECT_ATTEMPTS) {
+          logger.error({ userId, attempts, statusCode, reason }, "Baileys reconnect limit reached");
+          await this.persistStatus(userId, "DISCONNECTED", {
+            disconnectReason: `reconnect_limit_reached: ${reason}`,
+          });
+          this.broadcastStatus(userId, { status: "DISCONNECTED" });
+          this.notify(
+            userId,
+            "error",
+            "WhatsApp Gagal Tersambung",
+            "Gagal menyambung ulang setelah beberapa kali percobaan. Klik Hubungkan WhatsApp untuk mencoba lagi."
+          );
+          this.reconnectAttempts.delete(userId);
+          return;
+        }
+
         this.notify(userId, "warning", "WhatsApp Terputus", "Koneksi terputus, mencoba menyambung ulang...");
         setTimeout(() => {
-          this.startSession(userId).catch((err) =>
+          this.startSession(userId, true).catch((err) =>
             logger.error({ err, userId }, "Auto-reconnect failed")
           );
         }, RECONNECT_DELAY_MS);
