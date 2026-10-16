@@ -9,7 +9,7 @@ export async function connect(req: Request, res: Response) {
   res.json({
     success: true,
     data: result,
-    message: "WhatsApp Cloud API sudah tersambung (credentials sudah dikonfigurasi).",
+    message: "Permintaan koneksi WhatsApp diproses. Pindai QR Code jika diminta.",
   });
 }
 

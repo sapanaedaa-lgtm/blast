@@ -1,5 +1,5 @@
 import { prisma } from "@/config/prisma";
-import { whatsappEngine } from "./cloudapi.engine";
+import { whatsappEngine } from "./baileys.engine";
 import { AppError } from "@/utils/AppError";
 
 export async function requestConnection(userId: string) {
