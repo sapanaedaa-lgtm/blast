@@ -1,4 +1,4 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import { env } from "@/config/env";
 
 export const globalRateLimiter = rateLimit({
@@ -32,7 +32,7 @@ export const whatsappActionLimiter = rateLimit({
   limit: 15,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.sub ?? ipKeyGenerator(req.ip ?? ""),
+  keyGenerator: (req) => req.user!.sub,
   message: {
     success: false,
     message: "Terlalu banyak permintaan koneksi WhatsApp. Tunggu sebentar.",
