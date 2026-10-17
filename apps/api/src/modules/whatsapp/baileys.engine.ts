@@ -34,6 +34,11 @@ const RECONNECT_DELAY_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RESTART_READY_TIMEOUT_MS = 60000;
 const RESTART_POLL_INTERVAL_MS = 1000;
+const INVALID_SIGNATURE_MESSAGE = "Invalid account signature";
+
+function isInvalidSignatureError(reason: string): boolean {
+  return reason.toLowerCase().includes(INVALID_SIGNATURE_MESSAGE.toLowerCase());
+}
 
 function isStuckSocketError(errMsg: string, statusCode?: number): boolean {
   if (statusCode === 408 || statusCode === 428) return true;
@@ -194,6 +199,46 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       );
 
       this.sessions.delete(userId);
+
+      if (!loggedOut && isInvalidSignatureError(reason)) {
+        // Stop any pending reconnect and reset counters.
+        const timer = this.reconnectTimers.get(userId);
+        if (timer) {
+          clearTimeout(timer);
+          this.reconnectTimers.delete(userId);
+        }
+        this.reconnectAttempts.delete(userId);
+
+        logger.error(
+          { userId, statusCode, reason },
+          "Pairing ditolak WhatsApp: Invalid account signature. Sesi lokal dihapus, auto-reconnect dihentikan.",
+        );
+
+        try {
+          await wipeAuthState(this.sessionFolder(userId));
+        } catch (err) {
+          logger.error({ err, userId }, "Failed to wipe WhatsApp session files after invalid signature");
+        }
+
+        try {
+          await this.persistStatus(userId, "DISCONNECTED", {
+            disconnectReason: "invalid_account_signature",
+            phoneNumber: null,
+            profileName: null,
+          });
+        } catch (err) {
+          logger.error({ err, userId }, "Failed to persist WhatsApp status after invalid signature");
+        }
+
+        this.broadcastStatus(userId, { status: "DISCONNECTED" });
+        this.notify(
+          userId,
+          "error",
+          "Pairing WhatsApp Gagal",
+          "WhatsApp menolak perangkat ini (Invalid account signature). Periksa menu Perangkat Tertaut di HP: hapus perangkat lama atau yang tidak dikenal, lalu klik Hubungkan WhatsApp dan pindai QR Code terbaru.",
+        );
+        return;
+      }
 
       await this.persistStatus(userId, loggedOut ? "LOGGED_OUT" : "DISCONNECTED", {
         disconnectReason: reason,
