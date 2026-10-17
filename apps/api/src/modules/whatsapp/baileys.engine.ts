@@ -146,7 +146,10 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       const reason = lastDisconnect?.error?.message ?? "unknown";
 
-      logger.warn({ userId, statusCode, reason, loggedOut }, "Baileys connection closed");
+      logger.warn(
+        { userId, statusCode, reason, loggedOut },
+        `Baileys connection closed: statusCode=${statusCode ?? "none"} loggedOut=${loggedOut} reason=${reason}`,
+      );
 
       this.sessions.delete(userId);
 
@@ -164,7 +167,10 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
         this.reconnectAttempts.set(userId, attempts);
 
         if (attempts > MAX_RECONNECT_ATTEMPTS) {
-          logger.error({ userId, attempts, statusCode, reason }, "Baileys reconnect limit reached");
+          logger.error(
+            { userId, attempts, statusCode, reason },
+            `Baileys reconnect limit reached: statusCode=${statusCode ?? "none"} reason=${reason} attempts=${attempts}`,
+          );
           await this.persistStatus(userId, "DISCONNECTED", {
             disconnectReason: `reconnect_limit_reached: ${reason}`,
           });
