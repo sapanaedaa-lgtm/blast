@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "@/config/env";
 
 export const globalRateLimiter = rateLimit({
@@ -25,12 +25,14 @@ export const authRateLimiter = rateLimit({
   },
 });
 
-// Very strict limiter for QR/session generation to avoid abuse.
+// Limiter for QR/session generation, keyed per authenticated user so retries
+// while a session is connecting do not get throttled by shared IPs.
 export const whatsappActionLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 5,
+  limit: 15,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user?.sub ?? ipKeyGenerator(req.ip ?? ""),
   message: {
     success: false,
     message: "Terlalu banyak permintaan koneksi WhatsApp. Tunggu sebentar.",
