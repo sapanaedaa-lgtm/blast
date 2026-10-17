@@ -16,13 +16,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("admin@inaedaa.local");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await apiClient.post("/auth/login", { email, password });
+      const res = await apiClient.post("/auth/login", { email, password, rememberMe });
       const { user, accessToken } = res.data.data;
       setSession(user, accessToken);
       toast.success(`Selamat datang kembali, ${user.name ?? user.email}!`);
@@ -90,6 +91,18 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+          </div>
+
+          <div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 accent-accent-cyan"
+              />
+              Ingat saya
+            </label>
           </div>
 
           <Button type="submit" loading={loading} className="w-full">

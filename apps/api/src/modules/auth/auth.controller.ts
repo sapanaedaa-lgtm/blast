@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { CookieOptions, Request, Response } from "express";
 import { env } from "@/config/env";
 import { AppError } from "@/utils/AppError";
 import { recordAudit } from "@/middleware/auditLog";
@@ -9,14 +9,18 @@ const REFRESH_COOKIE = "inaedaa.refresh";
 // Frontend and API are on different sites, so production needs SameSite=None (+ Secure).
 const refreshSameSite = env.NODE_ENV === "production" ? "none" : "strict";
 
-function setRefreshCookie(res: Response, token: string) {
-  res.cookie(REFRESH_COOKIE, token, {
+function setRefreshCookie(res: Response, token: string, persistent: boolean) {
+  const options: CookieOptions = {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
     sameSite: refreshSameSite,
     path: "/api/v1/auth",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  };
+  // Persistent cookies last 30 days; otherwise omit maxAge/expires for a browser-session cookie.
+  if (persistent) {
+    options.maxAge = 30 * 24 * 60 * 60 * 1000;
+  }
+  res.cookie(REFRESH_COOKIE, token, options);
 }
 
 export async function register(req: Request, res: Response) {
@@ -25,12 +29,12 @@ export async function register(req: Request, res: Response) {
 }
 
 export async function login(req: Request, res: Response) {
-  const { user, accessToken, refreshToken } = await authService.authenticate(req.body, {
+  const { user, accessToken, refreshToken, rememberMe } = await authService.authenticate(req.body, {
     ip: req.ip,
     userAgent: req.headers["user-agent"],
   });
 
-  setRefreshCookie(res, refreshToken);
+  setRefreshCookie(res, refreshToken, rememberMe);
   await recordAudit({ userId: user.id, action: "LOGIN", req });
 
   res.json({ success: true, data: { user, accessToken } });

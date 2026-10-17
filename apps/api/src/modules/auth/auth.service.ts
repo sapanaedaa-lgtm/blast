@@ -7,6 +7,9 @@ import { AppError } from "@/utils/AppError";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "@/utils/jwt";
 import { LoginInput, RegisterInput } from "./auth.schema";
 
+const REFRESH_TTL_DAYS_DEFAULT = 7;
+const REFRESH_TTL_DAYS_REMEMBER = 30;
+
 export async function registerUser(input: RegisterInput) {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) throw AppError.conflict("Email sudah terdaftar");
@@ -44,13 +47,14 @@ export async function authenticate(
   if (!valid) throw AppError.unauthorized("Email atau password salah");
 
   const accessToken = signAccessToken({ sub: user.id, role: user.role, email: user.email });
-  const refreshToken = signRefreshToken(user.id);
+  const ttlDays = input.rememberMe ? REFRESH_TTL_DAYS_REMEMBER : REFRESH_TTL_DAYS_DEFAULT;
+  const refreshToken = signRefreshToken(user.id, `${ttlDays}d`);
 
   await prisma.refreshToken.create({
     data: {
       token: refreshToken,
       userId: user.id,
-      expiresAt: dayjs().add(7, "day").toDate(),
+      expiresAt: dayjs().add(ttlDays, "day").toDate(),
       userAgent: meta.userAgent,
       ipAddress: meta.ip,
     },
@@ -58,7 +62,7 @@ export async function authenticate(
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
-  return { user: sanitizeUser(user), accessToken, refreshToken };
+  return { user: sanitizeUser(user), accessToken, refreshToken, rememberMe: !!input.rememberMe };
 }
 
 export async function refreshSession(refreshToken: string) {
