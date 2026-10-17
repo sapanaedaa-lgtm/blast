@@ -64,11 +64,22 @@ export default function WhatsAppConnectPage() {
     try {
       await apiClient.post("/whatsapp/logout");
       setStatus({ status: "DISCONNECTED" });
+      toast.success("Sesi WhatsApp dihapus. Klik Hubungkan WhatsApp untuk memulai ulang.");
     } catch (err) {
       toast.error(apiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleForceLogout = async () => {
+    if (
+      !window.confirm(
+        "Hapus sesi WhatsApp tersimpan? Anda harus memindai QR Code baru untuk menghubungkan kembali.",
+      )
+    )
+      return;
+    await handleLogout();
   };
 
   const isConnected = status === "CONNECTED";
@@ -216,6 +227,17 @@ export default function WhatsAppConnectPage() {
           </AnimatePresence>
         </div>
       </Card>
+
+      {!loading && (
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Button variant="danger" onClick={handleForceLogout} loading={submitting}>
+            Keluar dari WhatsApp
+          </Button>
+          <p className="text-xs text-slate-500">
+            Menghapus sesi tersimpan di server. Setelah ini, klik Hubungkan WhatsApp untuk memindai QR baru.
+          </p>
+        </div>
+      )}
 
       {!loading && status === "CONNECTED" && phoneNumber && (
         <Card>

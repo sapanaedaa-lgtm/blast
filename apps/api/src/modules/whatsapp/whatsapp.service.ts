@@ -1,6 +1,5 @@
 import { prisma } from "@/config/prisma";
 import { whatsappEngine } from "./baileys.engine";
-import { AppError } from "@/utils/AppError";
 
 export async function requestConnection(userId: string) {
   await whatsappEngine.startSession(userId);
@@ -28,11 +27,6 @@ export async function getSessionStatus(userId: string) {
 }
 
 export async function disconnectSession(userId: string) {
-  const session = await prisma.whatsAppSession.findUnique({
-    where: { userId_sessionName: { userId, sessionName: "default" } },
-  });
-  if (!session) throw AppError.notFound("Sesi WhatsApp tidak ditemukan");
-
   await whatsappEngine.logoutSession(userId);
   return { success: true };
 }
