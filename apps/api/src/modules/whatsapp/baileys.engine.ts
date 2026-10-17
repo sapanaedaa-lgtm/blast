@@ -32,9 +32,17 @@ interface ActiveSession {
 const STALE_SESSION_MS = 120000;
 const RECONNECT_DELAY_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const RESTART_READY_TIMEOUT_MS = 60000;
+const RESTART_POLL_INTERVAL_MS = 1000;
+
+function isStuckSocketError(errMsg: string, statusCode?: number): boolean {
+  if (statusCode === 408 || statusCode === 428) return true;
+  return /timed out|timeout|init queries|connection closed|connection failure/i.test(errMsg);
+}
 
 class BaileysWhatsAppEngine implements IWhatsAppEngine {
   private sessions = new Map<string, ActiveSession>();
+  private restarting = new Map<string, Promise<boolean>>();
   private reconnectAttempts = new Map<string, number>();
   private io?: SocketIOServer;
 
@@ -127,15 +135,22 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
 
     socket.ev.on("creds.update", saveCreds);
     socket.ev.on("connection.update", (update) => {
-      this.handleConnectionUpdate(userId, update).catch((err) =>
+      this.handleConnectionUpdate(userId, update, socket).catch((err) =>
         logger.error({ err, userId }, "Error handling WA connection update")
       );
     });
   }
 
-  private async handleConnectionUpdate(userId: string, update: Partial<ConnectionState>) {
+  private async handleConnectionUpdate(
+    userId: string,
+    update: Partial<ConnectionState>,
+    socket: WASocket,
+  ) {
     const { connection, lastDisconnect, qr } = update;
     const session = this.sessions.get(userId);
+    if (session && session.socket !== socket) {
+      return; // stale event from a replaced socket
+    }
 
     if (qr) {
       logger.info({ userId, qrReceived: true }, "Baileys QR generated");
@@ -261,9 +276,64 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
 
       return { success: true, waMessageId: result?.key?.id ?? undefined };
     } catch (err) {
-      logger.error({ err, userId: input.userId, to: input.to }, "Failed to send WhatsApp message");
-      return { success: false, error: err instanceof Error ? err.message : "Unknown send error" };
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const statusCode = (err as Boom | undefined)?.output?.statusCode;
+      logger.error(
+        { err, userId: input.userId, statusCode, errMsg },
+        `Failed to send WhatsApp message: statusCode=${statusCode ?? "none"} error=${errMsg}`,
+      );
+
+      if (isStuckSocketError(errMsg, statusCode)) {
+        await this.restartSession(input.userId);
+      }
+
+      return { success: false, error: errMsg };
     }
+  }
+
+  private async restartSession(userId: string): Promise<boolean> {
+    const inProgress = this.restarting.get(userId);
+    if (inProgress) return inProgress;
+
+    const promise = (async (): Promise<boolean> => {
+      logger.warn({ userId }, "Restarting WhatsApp socket after send failure");
+
+      try {
+        this.sessions.get(userId)?.socket.end(undefined);
+      } catch (err) {
+        logger.warn({ err, userId }, "Error closing WhatsApp socket during restart");
+      }
+      this.sessions.delete(userId);
+      this.reconnectAttempts.set(userId, 0);
+
+      try {
+        await this.startSession(userId, true);
+      } catch (err) {
+        logger.error({ err, userId }, "Failed to restart WhatsApp socket");
+        return false;
+      }
+
+      const deadline = Date.now() + RESTART_READY_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        if (this.sessions.get(userId)?.status === "CONNECTED") {
+          logger.info({ userId }, "WhatsApp socket restarted and connected");
+          return true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
+      }
+
+      if (this.sessions.get(userId)?.status === "CONNECTED") {
+        logger.info({ userId }, "WhatsApp socket restarted and connected");
+        return true;
+      }
+      logger.warn({ userId }, "WhatsApp socket not ready after restart");
+      return false;
+    })().finally(() => {
+      this.restarting.delete(userId);
+    });
+
+    this.restarting.set(userId, promise);
+    return promise;
   }
 
   private async persistStatus(
