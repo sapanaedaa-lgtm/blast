@@ -101,7 +101,7 @@ export function Topbar() {
         <p className="text-sm font-medium text-slate-200">
           Halo, {user?.name?.split(" ")[0] ?? "User"} 👋
         </p>
-        <p className="text-xs text-slate-500">Selamat datang kembali di iNaedaa Blast</p>
+        <p className="text-xs text-slate-500">Selamat datang kembali di Xnaedaa Blast</p>
       </div>
 
       <div className="flex items-center gap-3">

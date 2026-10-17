@@ -6,7 +6,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "iNaedaa Blast — Smart WhatsApp Campaign Platform",
+  title: "Xnaedaa Blast — Smart WhatsApp Campaign Platform",
   description: "Kelola campaign WhatsApp Anda secara profesional: QR connect, import kontak, kirim bertahap, dan laporan realtime.",
   icons: {
     icon: [
