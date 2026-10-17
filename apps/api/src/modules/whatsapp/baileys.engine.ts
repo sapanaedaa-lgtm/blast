@@ -44,6 +44,8 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
   private sessions = new Map<string, ActiveSession>();
   private restarting = new Map<string, Promise<boolean>>();
   private reconnectAttempts = new Map<string, number>();
+  private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private loggingOut = new Set<string>();
   private io?: SocketIOServer;
 
   attachSocketServer(io: SocketIOServer) {
@@ -76,6 +78,10 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
   }
 
   async startSession(userId: string, isAutoReconnect = false): Promise<void> {
+    if (isAutoReconnect && this.loggingOut.has(userId)) {
+      return;
+    }
+
     const existing = this.sessions.get(userId);
     if (existing) {
       if (existing.status === "CONNECTED") {
@@ -199,6 +205,10 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
         await wipeAuthState(this.sessionFolder(userId));
         this.notify(userId, "error", "WhatsApp Logout", "Perangkat logout. Silakan pindai ulang QR Code.");
       } else {
+        if (this.loggingOut.has(userId)) {
+          return; // logout flow handles cleanup; do not schedule a reconnect
+        }
+
         const attempts = (this.reconnectAttempts.get(userId) ?? 0) + 1;
         this.reconnectAttempts.set(userId, attempts);
 
@@ -222,28 +232,75 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
         }
 
         this.notify(userId, "warning", "WhatsApp Terputus", "Koneksi terputus, mencoba menyambung ulang...");
-        setTimeout(() => {
+        const existingTimer = this.reconnectTimers.get(userId);
+        if (existingTimer) clearTimeout(existingTimer);
+        const t = setTimeout(() => {
+          this.reconnectTimers.delete(userId);
           this.startSession(userId, true).catch((err) =>
             logger.error({ err, userId }, "Auto-reconnect failed")
           );
         }, RECONNECT_DELAY_MS);
+        this.reconnectTimers.set(userId, t);
       }
     }
   }
 
   async logoutSession(userId: string): Promise<void> {
-    const session = this.sessions.get(userId);
-    if (session) {
-      try {
-        await session.socket.logout();
-      } catch (err) {
-        logger.warn({ err, userId }, "Error during explicit WA logout, forcing local cleanup");
+    this.loggingOut.add(userId);
+    try {
+      const timer = this.reconnectTimers.get(userId);
+      if (timer) {
+        clearTimeout(timer);
+        this.reconnectTimers.delete(userId);
       }
-      this.sessions.delete(userId);
+      this.reconnectAttempts.delete(userId);
+
+      const session = this.sessions.get(userId);
+      if (session) {
+        try {
+          session.socket.ev.removeAllListeners("creds.update");
+          session.socket.ev.removeAllListeners("connection.update");
+        } catch (err) {
+          logger.warn({ err, userId }, "Error removing WhatsApp socket listeners during logout");
+        }
+        try {
+          await session.socket.logout();
+        } catch (err) {
+          logger.warn({ err, userId }, "Error during explicit WA logout, forcing local cleanup");
+        }
+        try {
+          session.socket.end(undefined);
+        } catch (err) {
+          logger.warn({ err, userId }, "Error closing WhatsApp socket during logout");
+        }
+        this.sessions.delete(userId);
+      }
+
+      this.restarting.delete(userId);
+
+      try {
+        await wipeAuthState(this.sessionFolder(userId));
+      } catch (err) {
+        logger.error({ err, userId }, "Failed to wipe WhatsApp session files during logout");
+      }
+
+      try {
+        await this.persistStatus(userId, "DISCONNECTED", {
+          disconnectReason: "user_logout",
+          phoneNumber: null,
+          profileName: null,
+          lastQrAt: null,
+        });
+      } catch (err) {
+        logger.error({ err, userId }, "Failed to persist WhatsApp status during logout");
+      }
+
+      this.broadcastStatus(userId, { status: "DISCONNECTED" });
+    } catch (err) {
+      logger.error({ err, userId }, "Unexpected error during WhatsApp logout");
+    } finally {
+      this.loggingOut.delete(userId);
     }
-    await wipeAuthState(this.sessionFolder(userId));
-    await this.persistStatus(userId, "DISCONNECTED", { disconnectReason: "user_logout" });
-    this.broadcastStatus(userId, { status: "DISCONNECTED" });
   }
 
   async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
