@@ -6,11 +6,14 @@ import * as authService from "./auth.service";
 
 const REFRESH_COOKIE = "inaedaa.refresh";
 
+// Frontend and API are on different sites, so production needs SameSite=None (+ Secure).
+const refreshSameSite = env.NODE_ENV === "production" ? "none" : "strict";
+
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: refreshSameSite,
     path: "/api/v1/auth",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -44,7 +47,12 @@ export async function refresh(req: Request, res: Response) {
 export async function logout(req: Request, res: Response) {
   const token = req.cookies?.[REFRESH_COOKIE];
   if (token) await authService.revokeRefreshToken(token);
-  res.clearCookie(REFRESH_COOKIE, { path: "/api/v1/auth" });
+  res.clearCookie(REFRESH_COOKIE, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: refreshSameSite,
+    path: "/api/v1/auth",
+  });
 
   if (req.user) await recordAudit({ userId: req.user.sub, action: "LOGOUT", req });
 
