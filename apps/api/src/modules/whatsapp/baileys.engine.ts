@@ -7,6 +7,7 @@ import makeWASocket, {
   Browsers,
   ConnectionState,
   downloadMediaMessage,
+  fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import type { Boom } from "@hapi/boom";
 import { Server as SocketIOServer } from "socket.io";
@@ -94,7 +95,27 @@ class BaileysWhatsAppEngine implements IWhatsAppEngine {
     const folder = this.sessionFolder(userId);
     const { state, saveCreds } = await useEncryptedAuthState(folder);
 
+    let waVersion: [number, number, number] | undefined;
+    try {
+      const latest = await fetchLatestBaileysVersion();
+      if (latest.error) {
+        logger.warn(
+          { err: latest.error },
+          "Failed to fetch latest WhatsApp Web version, using Baileys default",
+        );
+      } else {
+        waVersion = latest.version;
+        logger.info(
+          { isLatest: latest.isLatest, version: latest.version.join(".") },
+          "Resolved WhatsApp Web version",
+        );
+      }
+    } catch (err) {
+      logger.warn({ err }, "Failed to fetch latest WhatsApp Web version, using Baileys default");
+    }
+
     const socket = makeWASocket({
+      version: waVersion,
       auth: state,
       browser: Browsers.appropriate("Chrome"),
       syncFullHistory: false,
