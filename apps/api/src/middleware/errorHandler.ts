@@ -30,6 +30,18 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     });
   }
 
+  // Errors from third-party middleware (e.g. csrf-csrf) that carry a 4xx statusCode
+  // are client errors, not server faults.
+  const rawStatus = (err as { statusCode?: unknown } | null)?.statusCode;
+  if (typeof rawStatus === "number" && rawStatus >= 400 && rawStatus <= 499) {
+    const rawCode = (err as { code?: unknown }).code;
+    const code = typeof rawCode === "string" ? rawCode : undefined;
+    const message =
+      err instanceof Error && err.message ? err.message : "Permintaan tidak valid";
+    logger.warn({ statusCode: rawStatus, code }, "Client request rejected");
+    return res.status(rawStatus).json({ success: false, message });
+  }
+
   logger.error({ err }, "Unhandled error");
 
   return res.status(500).json({
