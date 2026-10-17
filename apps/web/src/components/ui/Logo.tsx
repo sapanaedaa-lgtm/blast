@@ -5,7 +5,7 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
   return (
     <Image
       src="/logo-mark.svg"
-      alt="iNaedaa Blast"
+      alt="Xnaedaa Blast"
       width={size}
       height={size}
       className={cn("select-none", className)}
@@ -20,7 +20,7 @@ export function LogoFull({ className }: { className?: string }) {
       <LogoMark size={32} />
       <div className="flex flex-col leading-none">
         <span className="text-[15px] font-bold tracking-tight text-white">
-          iNaedaa <span className="gradient-text">Blast</span>
+          Xnaedaa <span className="gradient-text">Blast</span>
         </span>
         <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
           Smart WA Campaign
