@@ -31,13 +31,23 @@ export async function createCampaign(userId: string, input: CreateCampaignInput)
     where: { userId_sessionName: { userId, sessionName: "default" } },
   });
 
+  if (input.templateId) {
+    const template = await prisma.template.findFirst({ where: { id: input.templateId, userId } });
+    if (!template) throw AppError.notFound("Template tidak ditemukan");
+  }
+
+  if (input.mediaFileId) {
+    const media = await prisma.mediaFile.findFirst({ where: { id: input.mediaFileId, userId } });
+    if (!media) throw AppError.notFound("Media tidak ditemukan");
+  }
+
   const campaign = await prisma.campaign.create({
     data: {
       userId,
       whatsappSessionId: whatsappSession?.id,
       contactListId: contactList.id,
-      templateId: input.templateId,
-      mediaFileId: input.mediaFileId,
+      templateId: input.templateId || undefined,
+      mediaFileId: input.mediaFileId || undefined,
       name: input.name,
       messageBody: input.messageBody,
       delayPreset: input.delayPreset,
