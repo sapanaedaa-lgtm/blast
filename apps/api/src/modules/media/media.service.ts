@@ -81,6 +81,18 @@ export async function listMedia(userId: string, page: number, limit: number) {
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
+export async function getMediaFileForUser(userId: string, fileName: string): Promise<string> {
+  if (!fileName || fileName !== path.basename(fileName) || fileName.includes("..")) {
+    throw AppError.notFound("File tidak ditemukan");
+  }
+  const publicPath = `/uploads/${fileName}`;
+  const media = await prisma.mediaFile.findFirst({
+    where: { userId, OR: [{ path: publicPath }, { thumbnailPath: publicPath }] },
+  });
+  if (!media) throw AppError.notFound("File tidak ditemukan");
+  return path.resolve(env.UPLOAD_DIR, fileName);
+}
+
 export async function deleteMedia(userId: string, id: string) {
   const media = await prisma.mediaFile.findFirst({ where: { id, userId } });
   if (!media) throw AppError.notFound("Media tidak ditemukan");

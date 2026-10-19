@@ -5,7 +5,6 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import swaggerUi from "swagger-ui-express";
-import path from "path";
 
 import { env } from "@/config/env";
 import { logger } from "@/config/logger";
@@ -39,9 +38,6 @@ export function createApp(): Application {
   app.use(cookieParser(env.COOKIE_SECRET));
   app.use(pinoHttp({ logger, autoLogging: env.NODE_ENV !== "test" }));
   app.use(globalRateLimiter);
-
-  // Static file serving for locally-stored uploads (media, exports)
-  app.use("/uploads", express.static(path.resolve(env.UPLOAD_DIR)));
 
   app.get("/health", (_req, res) => {
     res.json({ success: true, status: "ok", timestamp: new Date().toISOString() });

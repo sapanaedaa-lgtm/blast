@@ -14,6 +14,16 @@ export async function list(req: Request, res: Response) {
   res.json({ success: true, data: result });
 }
 
+export async function file(req: Request, res: Response) {
+  const absPath = await mediaService.getMediaFileForUser(req.user!.sub, String(req.params.fileName));
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.sendFile(absPath, (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).json({ success: false, message: "File tidak ditemukan" });
+    }
+  });
+}
+
 export async function remove(req: Request, res: Response) {
   const result = await mediaService.deleteMedia(req.user!.sub, req.params.id);
   res.json({ success: true, data: result });

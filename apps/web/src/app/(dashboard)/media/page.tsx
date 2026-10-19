@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { Trash2, FileVideo, FileText as FileIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { FileDropzone } from "@/components/ui/FileDropzone";
-import { apiClient, apiErrorMessage, API_URL } from "@/lib/apiClient";
+import { AuthImage } from "@/components/ui/AuthImage";
+import { apiClient, apiErrorMessage } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
 interface MediaItem {
@@ -99,13 +99,10 @@ export default function MediaPage() {
               <div key={m.id} className="group relative overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.02]">
                 <div className="flex aspect-square items-center justify-center bg-base-950/50">
                   {m.type === "IMAGE" ? (
-                    <Image
-                      src={`${API_URL}${m.thumbnailPath ?? m.path}`}
+                    <AuthImage
+                      src={`/media/files/${(m.thumbnailPath ?? m.path).split("/").pop()}`}
                       alt={m.originalName}
-                      width={200}
-                      height={200}
                       className="h-full w-full object-cover"
-                      unoptimized
                     />
                   ) : m.type === "VIDEO" ? (
                     <FileVideo className="h-8 w-8 text-slate-500" />

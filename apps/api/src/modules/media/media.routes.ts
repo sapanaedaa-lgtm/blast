@@ -41,6 +41,24 @@ router.get("/", asyncHandler(mediaController.list));
 
 /**
  * @openapi
+ * /media/files/{fileName}:
+ *   get:
+ *     tags: [Media]
+ *     summary: Download a media file owned by the authenticated user
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: fileName
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: File content }
+ *       404: { description: File not found }
+ */
+router.get("/files/:fileName", asyncHandler(mediaController.file));
+
+/**
+ * @openapi
  * /media/{id}:
  *   delete:
  *     tags: [Media]

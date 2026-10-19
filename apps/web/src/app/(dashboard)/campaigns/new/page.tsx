@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Users, Image as ImageIcon, MessageSquare, Clock, Check, FileText } from "lucide-react";
 import toast from "react-hot-toast";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { MessageEditor } from "@/components/campaign/MessageEditor";
 import { DelaySelector } from "@/components/campaign/DelaySelector";
-import { apiClient, apiErrorMessage, API_URL } from "@/lib/apiClient";
+import { AuthImage } from "@/components/ui/AuthImage";
+import { apiClient, apiErrorMessage } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
 interface ContactListItem {
@@ -163,7 +163,11 @@ export default function NewCampaignPage() {
                 )}
               >
                 {m.type === "IMAGE" ? (
-                  <Image src={`${API_URL}${m.thumbnailPath ?? m.path}`} alt={m.originalName} fill className="object-cover" unoptimized />
+                  <AuthImage
+                    src={`/media/files/${(m.thumbnailPath ?? m.path).split("/").pop()}`}
+                    alt={m.originalName}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-base-950 text-[10px] text-slate-500">
                     {m.type}
