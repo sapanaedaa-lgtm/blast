@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validate } from "@/middleware/validate";
-import { requireAuth } from "@/middleware/auth";
+import { requireAuth, requireRole } from "@/middleware/auth";
 import { authRateLimiter } from "@/middleware/rateLimiter";
 import { doubleCsrfProtection } from "@/middleware/csrf";
 import { asyncHandler } from "@/utils/asyncHandler";
@@ -15,6 +15,8 @@ const router = Router();
  *   post:
  *     tags: [Authentication]
  *     summary: Register a new user
+ *     description: Admin only. Customer accounts are created manually by an administrator.
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -29,7 +31,7 @@ const router = Router();
  *     responses:
  *       201: { description: User created }
  */
-router.post("/register", authRateLimiter, validate(registerSchema), asyncHandler(authController.register));
+router.post("/register", requireAuth, requireRole("ADMIN"), authRateLimiter, validate(registerSchema), asyncHandler(authController.register));
 
 /**
  * @openapi

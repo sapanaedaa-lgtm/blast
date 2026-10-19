@@ -9,7 +9,11 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.SEED_ADMIN_EMAIL || "admin@inaedaa.local";
-  const password = process.env.SEED_ADMIN_PASSWORD || "Admin123!";
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!password || password.length < 12) {
+    console.error("SEED_ADMIN_PASSWORD wajib diset (minimal 12 karakter). Seed dibatalkan.");
+    process.exit(1);
+  }
   const passwordHash = await bcrypt.hash(password, 12);
 
   const admin = await prisma.user.upsert({
